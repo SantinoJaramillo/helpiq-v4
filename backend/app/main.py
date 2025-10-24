@@ -131,7 +131,6 @@ class MyChatKitServer(ChatKitServer[dict]):
     def __init__(self, store: Store[dict], attachment_store: Optional[AttachmentStore[dict]] = None):
         super().__init__(store=store, attachment_store=attachment_store)
 
-    # Sätt modell explicit
     assistant_agent = Agent(
         name="Assistant",
         instructions="You are a helpful troubleshooting assistant for service technicians. Answer clearly and concisely.",
@@ -148,57 +147,21 @@ class MyChatKitServer(ChatKitServer[dict]):
             if not os.getenv("OPENAI_API_KEY"):
                 raise RuntimeError("OPENAI_API_KEY is not set on the server")
 
-            # Normal streaming via Agents SDK
+            # ✅ VIKTIGT: använd keyword-args så converter inte tolkas som 'input'
             result_stream = await Runner.run_streamed(
-                self.assistant_agent, converter, thread
+                self.assistant_agent,
+                thread=thread,
+                converter=converter,
             )
 
             async for event in stream_agent_response(result_stream, converter, thread, item):
                 yield event
 
         except Exception:
-            logger.exception("Agent streaming failed (fallback används)")
-
-            # --- Fallback: kör icke-streamat och skicka ett enkelt assistantsvar ---
-            from openai import OpenAI
-            client = OpenAI()
-
-            # Ta senaste user-meddelandet som prompt (eller default)
-            user_text = "Hej! Vad kan du hjälpa mig med?"
-            try:
-                if thread.items and getattr(thread.items, "data", None):
-                    for it in reversed(thread.items.data):
-                        if getattr(it, "type", "") == "user_message":
-                            for c in getattr(it, "content", []):
-                                if getattr(c, "type", "") == "input_text":
-                                    user_text = c.text or user_text
-                                    break
-                            break
-            except Exception:
-                pass
-
-            r = client.responses.create(model="gpt-4o-mini", input=user_text)
-
-            # Plocka ut text
-            text = ""
-            if getattr(r, "output_text", None):
-                text = r.output_text
-            elif getattr(r, "output", None):
-                for out in r.output:
-                    if getattr(out, "type", "") == "output_text":
-                        text += out.text or ""
-
-            # Skicka två enkla ChatKit-events så UI visar svaret
-            from chatkit.types import ThreadStreamEvent
-            yield ThreadStreamEvent(
-                type="thread.assistant_message.created",
-                item={
-                    "type": "assistant_message",
-                    "content": [{"type": "output_text", "text": text or "Hej! (fallback-svar)"}],
-                    "attachments": [],
-                },
-            )
-            yield ThreadStreamEvent(type="response.completed")
+            logger.exception("Agent streaming failed")
+            # Ingen manuell event-skapning här (UnionType-typen är inte anropbar).
+            # Låt felet bubbla upp så ChatKit signalerar 'stream.error' korrekt.
+            raise
 
 
 
