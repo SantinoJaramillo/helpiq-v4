@@ -1,8 +1,13 @@
-fastapi
-uvicorn[standard]
-openai>=1.50.0
-openai-agents>=0.2.0
-openai-chatkit>=1.0.0
-supabase>=2.6.0
-python-dotenv
-pydantic>=2.0
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+
+# OpenAI SDK och ChatKit
+openai>=1.55.0
+openai-chatkit>=1.0.2
+
+# OpenAI Agents SDK (modulen heter "agents")
+openai-agents>=0.0.15
+
+# Typsupport
+pydantic>=2.7.0
