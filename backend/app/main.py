@@ -24,7 +24,11 @@ from chatkit.types import (
 from chatkit.store import Store, AttachmentStore
 
 # ChatKit helpers för Agents SDK
-from chatkit.agents import ThreadItemConverter, stream_agent_response
+from chatkit.agents import (
+    AgentContext,
+    simple_to_agent_input,
+    stream_agent_response,
+)
 
 # OpenAI Agents SDK (importvägen är "from agents import Agent, Runner")
 from agents import Agent, Runner
@@ -125,8 +129,6 @@ class MemoryStore(Store[dict]):
 
 # ---------- ChatKit Server som använder OpenAI Agents SDK ----------
 
-converter = ThreadItemConverter()
-
 class MyChatKitServer(ChatKitServer[dict]):
     def __init__(self, store: Store[dict], attachment_store: Optional[AttachmentStore[dict]] = None):
         super().__init__(store=store, attachment_store=attachment_store)
@@ -140,28 +142,31 @@ class MyChatKitServer(ChatKitServer[dict]):
     async def respond(
         self,
         thread: ThreadMetadata,
-        item: Optional["ThreadItem"],
+        item: Optional["ThreadItem"],   # UserMessageItem | None
         context: dict,
     ) -> AsyncIterator[ThreadStreamEvent]:
-        try:
-            if not os.getenv("OPENAI_API_KEY"):
-                raise RuntimeError("OPENAI_API_KEY is not set on the server")
+        # 1) Bygg en AgentContext (ChatKit helper)
+        agent_ctx = AgentContext(
+            thread=thread,
+            store=self.store,
+            request_context=context,
+        )
 
-            # ✅ VIKTIGT: använd keyword-args så converter inte tolkas som 'input'
-            result_stream = await Runner.run_streamed(
-                self.assistant_agent,
-                thread=thread,
-                converter=converter,
-            )
+        # 2) Konvertera senaste user-meddelandet till Agents SDK-input
+        #    (om första turnen saknar item kör vi tom lista)
+        agent_input = await simple_to_agent_input(item) if item else []
 
-            async for event in stream_agent_response(result_stream, converter, thread, item):
-                yield event
+        # 3) Kör Agents SDK i streaming-läge
+        result_stream = Runner.run_streamed(
+            self.assistant_agent,
+            agent_input,              # <- Viktigt: detta är "input" (en lista)
+            context=agent_ctx,        # <- Viktigt: context skickas här
+        )
 
-        except Exception:
-            logger.exception("Agent streaming failed")
-            # Ingen manuell event-skapning här (UnionType-typen är inte anropbar).
-            # Låt felet bubbla upp så ChatKit signalerar 'stream.error' korrekt.
-            raise
+        # 4) Översätt streamen till ChatKit-events
+        async for event in stream_agent_response(agent_ctx, result_stream):
+            yield event
+
 
 
 
