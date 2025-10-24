@@ -187,10 +187,6 @@ data_store = MemoryStore()
 attachment_store = MemoryAttachmentStore()
 server = MyChatKitServer(data_store, attachment_store)
 
-@app.get("/health")
-async def health():
-    return {"ok": True}
-
 @app.post("/chatkit")
 async def chatkit_endpoint(request: Request):
     """
@@ -198,11 +194,19 @@ async def chatkit_endpoint(request: Request):
     Vi låter ChatKitServer processa och returnerar antingen JSON eller SSE-stream.
     """
     body = await request.body()
-    result = await server.process(body, context={})
+
+    # ⬇️ HÄR: Läs query params och skicka in i context
+    mode = request.query_params.get("mode")  # "manual" | "web"
+    vs = request.query_params.get("vs")      # openai vector store id
+    context = {"mode": mode, "vs": vs}
+
+    result = await server.process(body, context=context)
+
     if isinstance(result, StreamingResult):
         return StreamingResponse(result, media_type="text/event-stream")
     else:
         return Response(content=result.json, media_type="application/json")
+
 
 
 # Render kör: uvicorn app.main:app --host 0.0.0.0 --port $PORT
