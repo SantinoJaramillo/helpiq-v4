@@ -215,20 +215,63 @@ def diag():
 
 @app.get("/debug/openai", include_in_schema=False)
 def debug_openai():
-    # enkel icke-streamad ping mot OpenAI
     if not os.getenv("OPENAI_API_KEY"):
         return {"ok": False, "why": "OPENAI_API_KEY missing"}
     try:
         client = OpenAI()
-        r = client.responses.create(model="gpt-4o-mini", input="Skriv ordet: PONG")
-        # hämta första text-output
+        r = client.responses.create(
+            model="gpt-4o-mini",
+            input="Skriv exakt detta ord: PONG"
+        )
+
+        # Flera sätt att få ut text – ta det första som finns
         txt = ""
-        for out in r.output or []:
-            if out.type == "output_text":
-                txt += out.text
+        # 1) ny bekvämlighetsproperty (finns i senaste SDK)
+        if getattr(r, "output_text", None):
+            txt = r.output_text
+        # 2) loopa outputs (om det inte fanns ovan)
+        if not txt and getattr(r, "output", None):
+            for out in r.output:
+                if getattr(out, "type", "") == "output_text":
+                    txt += out.text or ""
+
+        # 3) sista fallback: str(r)
+        if not txt:
+            txt = str(r)
+
         return {"ok": True, "text": txt}
     except Exception as e:
         return {"ok": False, "why": str(e)}
+
+@app.get("/debug/agents", include_in_schema=False)
+async def debug_agents():
+    try:
+        if not os.getenv("OPENAI_API_KEY"):
+            return {"ok": False, "why": "OPENAI_API_KEY missing"}
+
+        # Minimal agent, samma modell som i MyChatKitServer
+        test_agent = Agent(
+            name="Diag",
+            instructions="Answer with a single word.",
+            model="gpt-4o-mini",
+        )
+
+        # Kör icke-strömmat för enklare felsökning
+        result = await Runner.run(test_agent, input="Skriv exakt: PONG")
+
+        # 'result' kan innehålla flera “content parts”, plocka texten
+        text = ""
+        for chunk in getattr(result, "output", []) or []:
+            if getattr(chunk, "type", "") == "output_text":
+                text += chunk.text or ""
+
+        return {"ok": True, "text": text or str(result)}
+    except Exception as e:
+        # skriv även i logs (du har logger konfigurerad)
+        logger.exception("/debug/agents failed")
+        return {"ok": False, "why": str(e)}
+
+
 
 
 # --- Models API (för SelectModel) ---
