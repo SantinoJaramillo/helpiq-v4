@@ -6,6 +6,8 @@ from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 
+from app.supa import list_vectorstores_for_org
+
 # ChatKit
 from chatkit.server import ChatKitServer, StreamingResult
 from chatkit.types import (
@@ -189,18 +191,8 @@ def list_models(org_id: str):
     Returnerar vectorstores för en given org_id som:
     { "models": [ { id, name, openai_vector_store_id }, ... ] }
     """
-    # Lazy-import så att appen inte kraschar vid uppstart om env saknas.
-    try:
-        try:
-            from .supa import list_vectorstores_for_org  # om supa.py ligger i samma paket
-        except ImportError:
-            from supa import list_vectorstores_for_org   # fallback om den ligger bredvid
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Supabase ej konfigurerat: {e}")
-
     try:
         rows = list_vectorstores_for_org(org_id)
-        # Säkerställ fältens namn som frontenden väntar sig
         models = [
             {
                 "id": r.get("id"),
@@ -212,6 +204,7 @@ def list_models(org_id: str):
         return {"models": models}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 # Initiera store/server

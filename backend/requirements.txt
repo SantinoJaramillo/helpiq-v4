@@ -11,3 +11,7 @@ openai-agents>=0.0.15
 
 # Typsupport
 pydantic>=2.7.0
+
+#supabase
+supabase>=2.4.0
+httpx>=0.27
