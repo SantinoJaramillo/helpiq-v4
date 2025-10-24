@@ -5,3 +5,4 @@ openai-agents>=0.2.0
 openai-chatkit>=1.0.0
 supabase>=2.6.0
 python-dotenv
+chatkit-sqlite>=1.0.0

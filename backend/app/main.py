@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from chatkit.store import SQLiteStore  # enkel dev-store (byt till Postgres i produktion)
+from chatkit.sqlite import SQLiteStore  # enkel dev-store (byt till Postgres i produktion)
 from chatkit.server import StreamingResult
 from starlette.responses import StreamingResponse, JSONResponse
 
