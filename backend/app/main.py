@@ -155,20 +155,27 @@ class MyChatKitServer(ChatKitServer[dict]):
 
 app = FastAPI(title="HelpIQ ChatKit backend")
 
-# ✅ CORS – tillåt helpiq.se + localhost (Vite)
+# ✅ CORS – tillåt helpiq.se + localhost (Vite) + explicit headers för preflight
 origins = [
-    os.getenv("ALLOWED_ORIGIN", "http://localhost:5173"),  # kan sättas i Render
+    os.getenv("ALLOWED_ORIGIN", "http://localhost:5173"),
     "http://localhost:5173",
     "http://localhost:3000",
     "https://helpiq.se",
     "https://www.helpiq.se",
 ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,          # inte "*" ihop med allow_credentials=True
+    allow_origins=origins,                     # ingen "*" ihop med credentials
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],  # räcker
+    allow_headers=[                            # 👈 explicit är nyckeln här
+        "Content-Type",
+        "X-OpenAI-Domain-Key",
+        "Authorization",
+    ],
+    expose_headers=["Content-Type"],
+    max_age=86400,
 )
 
 # ✅ Health & Root (enkla att testa)
