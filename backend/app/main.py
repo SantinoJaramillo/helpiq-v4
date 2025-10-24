@@ -20,8 +20,7 @@ from chatkit.store import Store, AttachmentStore
 # ChatKit helpers för Agents SDK
 from chatkit.agents import ThreadItemConverter, stream_agent_response
 
-# OpenAI Agents SDK
-# (importvägen är "from agents import Agent, Runner")
+# OpenAI Agents SDK (importvägen är "from agents import Agent, Runner")
 from agents import Agent, Runner
 
 
@@ -115,7 +114,6 @@ class MemoryStore(Store[dict]):
         return None
 
 
-
 # ---------- ChatKit Server som använder OpenAI Agents SDK ----------
 
 converter = ThreadItemConverter()
@@ -128,7 +126,7 @@ class MyChatKitServer(ChatKitServer[dict]):
     assistant_agent = Agent(
         name="Assistant",
         instructions="You are a helpful troubleshooting assistant for service technicians. Answer clearly and concisely.",
-        # valfri: model="gpt-4o-mini"  # Agents SDK har egen default om du inte sätter
+        # valfri: model="gpt-4o-mini"
     )
 
     async def respond(
@@ -140,17 +138,7 @@ class MyChatKitServer(ChatKitServer[dict]):
         """
         Kör agenten strömmat och konvertera till ChatKit events.
         """
-        # Hämta användarens senaste text (fallback om item skulle vara None)
-        user_text = ""
-        try:
-            if item and item.type == "message" and getattr(item, "role", "") == "user":
-                # item.content är en lista content parts i ChatKit typerna
-                # converter tar hand om korrekt omvandling till Agents-input, så vi kör bara hela tråden via helpern
-                pass
-        except Exception:
-            pass
-
-        # Kör agenten i streaming-läge och låt ChatKit helpern göra jobbet
+        # (Valfri logik: använd context.get("mode") / context.get("vs"))
         result_stream = await Runner.run_streamed(
             self.assistant_agent,
             converter,   # converter kan hantera tråd -> agent-input
@@ -161,26 +149,38 @@ class MyChatKitServer(ChatKitServer[dict]):
             yield event
 
 
-# ---------- FastAPI app & endpoint ----------
+# ---------- FastAPI app, CORS & endpoints ----------
 
 app = FastAPI(title="HelpIQ ChatKit backend")
 
-# CORS – tillåt helpiq.se + localhost (Vite)
+# ✅ CORS – tillåt helpiq.se + localhost (Vite)
 origins = [
     os.getenv("ALLOWED_ORIGIN", "http://localhost:5173"),  # kan sättas i Render
     "http://localhost:5173",
-    "http://localhost:3000",        # om du ibland kör annan port
+    "http://localhost:3000",
     "https://helpiq.se",
     "https://www.helpiq.se",
 ]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,          # OBS: inte "*" när allow_credentials=True
+    allow_origins=origins,          # inte "*" ihop med allow_credentials=True
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ✅ Health & Root (enkla att testa)
+@app.get("/", include_in_schema=False)
+def root():
+    return {"ok": True}
+
+@app.get("/health", include_in_schema=False)
+def health():
+    return {"ok": True}
+
+@app.head("/health", include_in_schema=False)
+def health_head():
+    return Response(status_code=200)
 
 # Initiera store/server
 data_store = MemoryStore()
@@ -195,18 +195,15 @@ async def chatkit_endpoint(request: Request):
     """
     body = await request.body()
 
-    # ⬇️ HÄR: Läs query params och skicka in i context
+    # ⬇️ Skicka vidare query-params till servern som context
     mode = request.query_params.get("mode")  # "manual" | "web"
     vs = request.query_params.get("vs")      # openai vector store id
     context = {"mode": mode, "vs": vs}
 
     result = await server.process(body, context=context)
-
     if isinstance(result, StreamingResult):
         return StreamingResponse(result, media_type="text/event-stream")
-    else:
-        return Response(content=result.json, media_type="application/json")
-
+    return Response(content=result.json, media_type="application/json")
 
 
 # Render kör: uvicorn app.main:app --host 0.0.0.0 --port $PORT
