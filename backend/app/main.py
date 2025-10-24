@@ -187,6 +187,12 @@ data_store = MemoryStore()
 attachment_store = MemoryAttachmentStore()
 server = MyChatKitServer(data_store, attachment_store)
 
+# ✅ Preflight (OPTIONS) för /chatkit
+@app.options("/chatkit", include_in_schema=False)
+async def chatkit_options():
+    # Låt CORSMiddleware svara med 200 + rätt headers
+    return Response(status_code=200)
+
 @app.post("/chatkit")
 async def chatkit_endpoint(request: Request):
     """
