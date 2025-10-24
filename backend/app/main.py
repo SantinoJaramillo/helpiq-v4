@@ -235,13 +235,12 @@ async def chatkit_endpoint(request: Request):
     body = await request.body()
 
     # Skicka vidare query-params till servern som context
-    mode = request.query_params.get("mode")  # "manual" | "web"
-    vs = request.query_params.get("vs")      # openai vector store id
+    mode = request.query_params.get("mode")
+    vs = request.query_params.get("vs")
     context = {"mode": mode, "vs": vs}
 
     # --- CORS headers (explicit) ---
     origin = request.headers.get("origin")
-    # samma lista som du har i CORS-mellanvaran
     allowed = {
         os.getenv("ALLOWED_ORIGIN", "http://localhost:5173"),
         "http://localhost:5173",
@@ -258,15 +257,24 @@ async def chatkit_endpoint(request: Request):
             "Cache-Control": "no-cache",
         }
 
-    result = await server.process(body, context=context)
+    try:
+        result = await server.process(body, context=context)
 
-    if isinstance(result, StreamingResult):
-        # 👇 Sätt CORS-headrar även på stream-svaret
-        return StreamingResponse(result, media_type="text/event-stream", headers=cors_headers)
+        if isinstance(result, StreamingResult):
+            return StreamingResponse(result, media_type="text/event-stream", headers=cors_headers)
 
-    # 👇 Och på JSON-svaret
-    return Response(content=result.json, media_type="application/json", headers=cors_headers)
+        return Response(content=result.json, media_type="application/json", headers=cors_headers)
 
+    except Exception as e:
+        # Viktigt: returnera CORS-headers även när det går fel
+        # (och logga felet i Render-loggarna)
+        err = {"error": "internal_error", "message": str(e)}
+        return Response(
+            content=str(err),
+            media_type="application/json",
+            headers=cors_headers,
+            status_code=500,
+        )
 
 
 # Render kör: uvicorn app.main:app --host 0.0.0.0 --port $PORT
