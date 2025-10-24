@@ -4,6 +4,8 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 import logging
 import traceback
 
+from openai import OpenAI
+
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
@@ -200,6 +202,34 @@ def health():
 @app.head("/health", include_in_schema=False)
 def health_head():
     return Response(status_code=200)
+
+@app.get("/debug/diag", include_in_schema=False)
+def diag():
+    has_key = bool(os.getenv("OPENAI_API_KEY"))
+    try:
+        import agents  # noqa
+        agents_ok = True
+    except Exception:
+        agents_ok = False
+    return {"has_openai_api_key": has_key, "agents_pkg_ok": agents_ok}
+
+@app.get("/debug/openai", include_in_schema=False)
+def debug_openai():
+    # enkel icke-streamad ping mot OpenAI
+    if not os.getenv("OPENAI_API_KEY"):
+        return {"ok": False, "why": "OPENAI_API_KEY missing"}
+    try:
+        client = OpenAI()
+        r = client.responses.create(model="gpt-4o-mini", input="Skriv ordet: PONG")
+        # hämta första text-output
+        txt = ""
+        for out in r.output or []:
+            if out.type == "output_text":
+                txt += out.text
+        return {"ok": True, "text": txt}
+    except Exception as e:
+        return {"ok": False, "why": str(e)}
+
 
 # --- Models API (för SelectModel) ---
 @app.get("/api/models")
