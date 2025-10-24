@@ -57,10 +57,10 @@ class MemoryStore(Store[dict]):
     I produktion: ersätt med en Postgres/Supabase-implementation.
     """
     def __init__(self) -> None:
-        # trådar och items lagras i minnet
         self._threads: Dict[str, ThreadMetadata] = {}
         self._items: Dict[str, List[ThreadItem]] = {}
 
+    # --- Threads & items ---
     async def load_thread(self, thread_id: str, context: dict) -> ThreadMetadata:
         return self._threads[thread_id]
 
@@ -68,12 +68,8 @@ class MemoryStore(Store[dict]):
         self._threads[thread.id] = thread
         self._items.setdefault(thread.id, [])
 
-    async def load_threads(
-        self, limit: int, after: Optional[str], order: str, context: dict
-    ) -> Page[ThreadMetadata]:
+    async def load_threads(self, limit: int, after: Optional[str], order: str, context: dict) -> Page[ThreadMetadata]:
         threads = list(self._threads.values())
-
-        # Vi ignorerar "after" och "order" i denna enkla dev-version.
         items = threads[: limit if limit else len(threads)]
         return Page[ThreadMetadata](items=items, next=None)
 
@@ -103,26 +99,21 @@ class MemoryStore(Store[dict]):
         items = self._items.get(thread_id, [])
         self._items[thread_id] = [it for it in items if it.id != item_id]
 
-    async def load_thread_items(
-        self,
-        thread_id: str,
-        after: Optional[str],
-        limit: int,
-        order: str,
-        context: dict,
-    ) -> Page[ThreadItem]:
+    async def load_thread_items(self, thread_id: str, after: Optional[str], limit: int, order: str, context: dict) -> Page[ThreadItem]:
         items = self._items.get(thread_id, [])
-        # Ignorerar "after" och "order" i dev-versionen
         slice_items = items[: limit if limit else len(items)]
         return Page[ThreadItem](items=slice_items, next=None)
 
-    # Attachment metoder proxas ofta till ett separat AttachmentStore;
-    # här implementerar vi dem inte i Store (ChatKit använder AttachmentStore).
+    # --- Attachments (inte använda här – no-ops för att uppfylla Store-gränssnittet) ---
     async def save_attachment(self, attachment: Attachment, context: dict) -> None:
-        pass  # inte använd när separat AttachmentStore används
+        return None
 
     async def load_attachment(self, attachment_id: str, context: dict) -> Attachment:
-        raise NotImplementedError("Use AttachmentStore for attachments")
+        raise NotImplementedError("Use a separate AttachmentStore in this demo")
+
+    async def delete_attachment(self, attachment_id: str, context: dict) -> None:
+        return None
+
 
 
 # ---------- ChatKit Server som använder OpenAI Agents SDK ----------
