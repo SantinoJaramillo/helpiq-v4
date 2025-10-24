@@ -1,9 +1,11 @@
 import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from chatkit.sqlite import SQLiteStore  # enkel dev-store (byt till Postgres i produktion)
+from fastapi.responses import StreamingResponse, JSONResponse
+
+# Dev-store som följer med openai-chatkit (ingen extra modul krävs)
 from chatkit.server import StreamingResult
-from starlette.responses import StreamingResponse, JSONResponse
+from chatkit.sqlite import SQLiteStore
 
 from .server import ServiceTechChatServer
 from .supa import list_vectorstores_for_org
@@ -20,27 +22,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# En enkel “store” för ChatKit-trådar (byt till egen DB om du vill)
-data_store = SQLiteStore(path=":memory:")  # byt till fil eller Postgres i prod
+# 💾 Spara på disk så att trådar överlever om processen startas om
+os.makedirs("data", exist_ok=True)
+data_store = SQLiteStore(path="data/chatkit.db")
+
 server = ServiceTechChatServer(data_store, attachment_store=None)
 
 @app.get("/health")
 def health():
     return {"ok": True}
 
-# Lista modeller (vector stores) - hårdkodat org-id just nu för enkelhet
+# Lista vectorstores (modeller) för ett org-id
 @app.get("/api/models")
 def get_models(org_id: str):
     rows = list_vectorstores_for_org(org_id)
     return {"models": rows}
 
-# ChatKit endpoint (ett enda)
+# ChatKit-endpoint (JSON/SSE)
 @app.post("/chatkit")
 async def chatkit_endpoint(request: Request, mode: str = "web", vs: str | None = None):
     body = await request.body()
-    # Skicka "context" till ChatKitServer → AgentContext (vi läser i respond())
     result = await server.process(body, {"mode": mode, "vs": vs})
     if isinstance(result, StreamingResult):
         return StreamingResponse(result, media_type="text/event-stream")
-    else:
-        return JSONResponse(content=result.json)
+    return JSONResponse(content=result.json)
