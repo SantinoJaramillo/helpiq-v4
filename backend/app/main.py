@@ -165,10 +165,18 @@ class MyChatKitServer(ChatKitServer[dict]):
 
 app = FastAPI(title="HelpIQ ChatKit backend")
 
-# Tillåt frontenddomänen (lägg gärna in din one.com-domän här)
+# CORS – tillåt helpiq.se + localhost (Vite)
+origins = [
+    os.getenv("ALLOWED_ORIGIN", "http://localhost:5173"),  # kan sättas i Render
+    "http://localhost:5173",
+    "http://localhost:3000",        # om du ibland kör annan port
+    "https://helpiq.se",
+    "https://www.helpiq.se",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # byt till din domän i produktion
+    allow_origins=origins,          # OBS: inte "*" när allow_credentials=True
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
