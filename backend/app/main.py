@@ -2,7 +2,7 @@
 import os
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 
@@ -181,6 +181,38 @@ def health():
 @app.head("/health", include_in_schema=False)
 def health_head():
     return Response(status_code=200)
+
+# --- Models API (för SelectModel) ---
+@app.get("/api/models")
+def list_models(org_id: str):
+    """
+    Returnerar vectorstores för en given org_id som:
+    { "models": [ { id, name, openai_vector_store_id }, ... ] }
+    """
+    # Lazy-import så att appen inte kraschar vid uppstart om env saknas.
+    try:
+        try:
+            from .supa import list_vectorstores_for_org  # om supa.py ligger i samma paket
+        except ImportError:
+            from supa import list_vectorstores_for_org   # fallback om den ligger bredvid
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Supabase ej konfigurerat: {e}")
+
+    try:
+        rows = list_vectorstores_for_org(org_id)
+        # Säkerställ fältens namn som frontenden väntar sig
+        models = [
+            {
+                "id": r.get("id"),
+                "name": r.get("name"),
+                "openai_vector_store_id": r.get("openai_vector_store_id") or r.get("id"),
+            }
+            for r in (rows or [])
+        ]
+        return {"models": models}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # Initiera store/server
 data_store = MemoryStore()
