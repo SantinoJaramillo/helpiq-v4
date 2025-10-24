@@ -1,6 +1,8 @@
 # backend/app/main.py
 import os
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
+import logging
+import traceback
 
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +26,9 @@ from chatkit.agents import ThreadItemConverter, stream_agent_response
 
 # OpenAI Agents SDK (importvägen är "from agents import Agent, Runner")
 from agents import Agent, Runner
+
+logger = logging.getLogger("helpiq")
+logging.basicConfig(level=logging.INFO)
 
 
 # ---------- Minimal in-memory store (för utveckling) ----------
@@ -124,31 +129,36 @@ class MyChatKitServer(ChatKitServer[dict]):
     def __init__(self, store: Store[dict], attachment_store: Optional[AttachmentStore[dict]] = None):
         super().__init__(store=store, attachment_store=attachment_store)
 
-    # En väldigt enkel agent som svarar hjälpsamt
+    # ⬇️ Sätt modell explicit
     assistant_agent = Agent(
         name="Assistant",
         instructions="You are a helpful troubleshooting assistant for service technicians. Answer clearly and concisely.",
-        # valfri: model="gpt-4o-mini"
+        model="gpt-4o-mini",   # <— välj en lätt modell
     )
 
     async def respond(
         self,
         thread: ThreadMetadata,
-        item: Optional["ThreadItem"],  # UserMessageItem när användaren skriver
-        context: dict
+        item: Optional["ThreadItem"],
+        context: dict,
     ) -> AsyncIterator[ThreadStreamEvent]:
-        """
-        Kör agenten strömmat och konvertera till ChatKit events.
-        """
-        # (Valfri logik: använd context.get("mode") / context.get("vs"))
-        result_stream = await Runner.run_streamed(
-            self.assistant_agent,
-            converter,   # converter kan hantera tråd -> agent-input
-            thread,      # hela ThreadMetadata
-        )
+        try:
+            # ⬇️ faila tidigt om API-nyckeln saknas
+            if not os.getenv("OPENAI_API_KEY"):
+                raise RuntimeError("OPENAI_API_KEY is not set on the server")
 
-        async for event in stream_agent_response(result_stream, converter, thread, item):
-            yield event
+            # kör agenten streamat
+            result_stream = await Runner.run_streamed(
+                self.assistant_agent, converter, thread
+            )
+
+            async for event in stream_agent_response(result_stream, converter, thread, item):
+                yield event
+
+        except Exception as e:
+            logger.exception("Agent streaming failed")
+            # låt ChatKit hantera som stream.error (du såg den tidigare)
+            raise
 
 
 # ---------- FastAPI app, CORS & endpoints ----------
