@@ -219,11 +219,12 @@ data_store = MemoryStore()
 attachment_store = MemoryAttachmentStore()
 server = MyChatKitServer(data_store, attachment_store)
 
-# ✅ Preflight (OPTIONS) för /chatkit
 @app.options("/chatkit", include_in_schema=False)
 async def chatkit_options():
-    # Låt CORSMiddleware svara med 200 + rätt headers
     return Response(status_code=200)
+
+
+# ✅ Preflight (OPTIONS) finns redan ovan
 
 @app.post("/chatkit")
 async def chatkit_endpoint(request: Request):
@@ -233,15 +234,39 @@ async def chatkit_endpoint(request: Request):
     """
     body = await request.body()
 
-    # ⬇️ Skicka vidare query-params till servern som context
+    # Skicka vidare query-params till servern som context
     mode = request.query_params.get("mode")  # "manual" | "web"
     vs = request.query_params.get("vs")      # openai vector store id
     context = {"mode": mode, "vs": vs}
 
+    # --- CORS headers (explicit) ---
+    origin = request.headers.get("origin")
+    # samma lista som du har i CORS-mellanvaran
+    allowed = {
+        os.getenv("ALLOWED_ORIGIN", "http://localhost:5173"),
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://helpiq.se",
+        "https://www.helpiq.se",
+    }
+    cors_headers = {}
+    if origin in allowed:
+        cors_headers = {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Expose-Headers": "Content-Type",
+            "Cache-Control": "no-cache",
+        }
+
     result = await server.process(body, context=context)
+
     if isinstance(result, StreamingResult):
-        return StreamingResponse(result, media_type="text/event-stream")
-    return Response(content=result.json, media_type="application/json")
+        # 👇 Sätt CORS-headrar även på stream-svaret
+        return StreamingResponse(result, media_type="text/event-stream", headers=cors_headers)
+
+    # 👇 Och på JSON-svaret
+    return Response(content=result.json, media_type="application/json", headers=cors_headers)
+
 
 
 # Render kör: uvicorn app.main:app --host 0.0.0.0 --port $PORT
